@@ -2,6 +2,17 @@ import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Disable Impeller to avoid Vulkan crashes on low-end devices
+  // if (Platform.isAndroid) {
+  //   SystemChannels.platform.invokeMethod('FlutterView.setImpellerEnabled', false);
+  // }
+  runApp(HelloWorld());
+}
+
+
 class HelloWorld extends StatefulWidget {
   @override
   _HelloWorldState createState() => _HelloWorldState();

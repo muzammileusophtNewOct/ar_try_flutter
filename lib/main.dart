@@ -4,126 +4,267 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 import 'dart:async';
 import 'dart:math' as math;
 
-
-//-- Example 2 of tom rotating in circular motion
+//Example 3 to calculate distance b/w 2 marks on floor 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false, 
-    home: UniqueMovingTom()
-  ));
+  runApp(const MaterialApp(home: ARDistanceMeasurer()));
 }
 
-class UniqueMovingTom extends StatefulWidget {
-  const UniqueMovingTom({super.key});
+class ARDistanceMeasurer extends StatefulWidget {
+  const ARDistanceMeasurer({super.key});
 
   @override
-  State<UniqueMovingTom> createState() => _UniqueMovingTomState();
+  State<ARDistanceMeasurer> createState() => _ARDistanceMeasurerState();
 }
 
-class _UniqueMovingTomState extends State<UniqueMovingTom> {
+class _ARDistanceMeasurerState extends State<ARDistanceMeasurer> {
   ArCoreController? arCoreController;
-  ArCoreNode? tomNode;
   
-  // Animation variables
-  Timer? timer;
-  double angle = 0.0;
-  vector.Vector3 centerPosition = vector.Vector3(0, 0, -1.5);
+  // Do points ko store karne ke liye
+  ArCoreNode? startNode;
+  ArCoreNode? endNode;
+  String distanceText = "Tap on floor to place marks";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AR Patrol Tom'),
-        backgroundColor: Colors.blueAccent,
-      ),
-      body: ArCoreView(
-        onArCoreViewCreated: _onArCoreViewCreated,
-        enableTapRecognizer: true, // Floor tap enable karne ke liye
+      appBar: AppBar(title: const Text('AR Distance Meter')),
+      body: Stack(
+        children: [
+          ArCoreView(
+            onArCoreViewCreated: _onArCoreViewCreated,
+            enableTapRecognizer: true,
+          enablePlaneRenderer: true, // ZAROORI: Isse dots nazar ayenge
+          // debugOptions: ArCoreDebugOptions(showFeaturePoints: true), // Tracking dekhne ke li
+          ),
+          // Distance display karne ke liye UI
+          Positioned(
+            top: 50,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.black54,
+              child: Text(
+                distanceText,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 30,
+            left: 20,
+            child: FloatingActionButton(
+              onPressed: _resetMarks,
+              child: const Icon(Icons.refresh),
+            ),
+          )
+        ],
       ),
     );
   }
 
   void _onArCoreViewCreated(ArCoreController controller) {
     arCoreController = controller;
-    
-    // Jab user floor par tap kare toh Tom wahan move ho jaye
+    // Plane detection configuration
     arCoreController?.onPlaneTap = _handleOnPlaneTap;
-    
-    // Initial Tom add karein
-    _spawnTom(centerPosition);
-    _startUniqueAnimation();
+
   }
 
   void _handleOnPlaneTap(List<ArCoreHitTestResult> hits) {
+    if (hits.isEmpty) return;
     final hit = hits.first;
-    // Tap wali jagah ko naya center bana dein
-    centerPosition = hit.pose.translation;
-    _spawnTom(centerPosition);
-  }
 
-  void _spawnTom(vector.Vector3 position) {
-    // Agar pehle se node hai toh remove karein
-    if (tomNode != null) {
-      arCoreController?.removeNode(nodeName: "tom_patrol");
-    }
-
-    tomNode = ArCoreReferenceNode(
-      name: "tom_patrol",
-      object3DFileName: "tom.glb", // Make sure file is in android/assets
-      position: position,
-      scale: vector.Vector3(0.5, 0.5, 0.5),
-    );
-
-    arCoreController?.addArCoreNode(tomNode!);
-  }
-
-  // Unique Circular Animation Logic
-  void _startUniqueAnimation() {
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
-      if (tomNode == null || arCoreController == null) return;
-
-      angle += 0.05; // Speed of rotation
-      double radius = 0.6; // Kitni door tak ghoomega
-
-      // Calculate new X and Z for circular movement
-      double newX = centerPosition.x + radius * math.cos(angle);
-      double newZ = centerPosition.z + radius * math.sin(angle);
+    if (startNode == null) {
+      // Pehla mark lagayein
+      startNode = _createMark(hit.pose.translation, Colors.red);
+      arCoreController?.addArCoreNode(startNode!);
+      setState(() {
+        distanceText = "First mark placed. Tap for second mark.";
+      });
+    } else if (endNode == null) {
+      // Doosra mark lagayein
+      endNode = _createMark(hit.pose.translation, Colors.blue);
+      arCoreController?.addArCoreNode(endNode!);
       
-      vector.Vector3 newPos = vector.Vector3(newX, centerPosition.y, newZ);
-
-      // Unique Feature: Moving with Rotation 
-      // Tom ka face movement ki taraf karne ke liye y-axis rotation
-      double rotationY = -angle + (math.pi / 2);
-
-      // Update Node (Re-adding for smooth position in this specific plugin)
-      _updateNodePosition(newPos, rotationY);
-    });
+      // Distance calculate karein
+      _calculateDistance();
+    }
   }
 
-  void _updateNodePosition(vector.Vector3 pos, double rotationY) {
-    arCoreController?.removeNode(nodeName: "tom_patrol");
-    
-    tomNode = ArCoreReferenceNode(
-      name: "tom_patrol",
-      object3DFileName: "tom.glb",
-      position: pos,
-      // Quaternion use hota hai rotation ke liye
-      rotation: vector.Vector4(0, 1, 0, rotationY), 
-      scale: vector.Vector3(0.5, 0.5, 0.5),
+  ArCoreNode _createMark(vector.Vector3 position, Color color) {
+    final material = ArCoreMaterial(color: color, metallic: 1.0);
+    final sphere = ArCoreSphere(materials: [material], radius: 0.03); // Chota sa mark
+    return ArCoreNode(
+      shape: sphere,
+      position: position,
     );
+  }
 
-    arCoreController?.addArCoreNode(tomNode!);
+
+
+void _calculateDistance() {
+  if (startNode == null || endNode == null) return;
+
+  // .value lagana zaroori hai kyunki position ek ValueNotifier hai
+  final startPos = startNode!.position!.value; 
+  final endPos = endNode!.position!.value;
+
+  // Distance Formula implementation
+  double dx = endPos.x - startPos.x;
+  double dy = endPos.y - startPos.y;
+  double dz = endPos.z - startPos.z;
+
+  // math.sqrt use karein agar math as prefix imported hai
+  double distance = math.sqrt(dx * dx + dy * dy + dz * dz);
+  
+  setState(() {
+    distanceText = "Distance: ${(distance * 100).toStringAsFixed(2)} cm";
+  });
+}
+
+
+  void _resetMarks() {
+    if (startNode != null) arCoreController?.removeNode(nodeName: startNode!.name);
+    if (endNode != null) arCoreController?.removeNode(nodeName: endNode!.name);
+    startNode = null;
+    endNode = null;
+    setState(() {
+      distanceText = "Marks reset. Tap on floor again.";
+    });
   }
 
   @override
   void dispose() {
-    timer?.cancel();
     arCoreController?.dispose();
     super.dispose();
   }
 }
+
+
+
+
+
+
+
+
+//-- Example 2 of tom rotating in circular motion
+// void main() {
+//   WidgetsFlutterBinding.ensureInitialized();
+//   runApp(const MaterialApp(
+//     debugShowCheckedModeBanner: false, 
+//     home: UniqueMovingTom()
+//   ));
+// }
+
+// class UniqueMovingTom extends StatefulWidget {
+//   const UniqueMovingTom({super.key});
+
+//   @override
+//   State<UniqueMovingTom> createState() => _UniqueMovingTomState();
+// }
+
+// class _UniqueMovingTomState extends State<UniqueMovingTom> {
+//   ArCoreController? arCoreController;
+//   ArCoreNode? tomNode;
+  
+//   // Animation variables
+//   Timer? timer;
+//   double angle = 0.0;
+//   vector.Vector3 centerPosition = vector.Vector3(0, 0, -1.5);
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: const Text('AR Patrol Tom'),
+//         backgroundColor: Colors.blueAccent,
+//       ),
+//       body: ArCoreView(
+//         onArCoreViewCreated: _onArCoreViewCreated,
+//         enableTapRecognizer: true, // Floor tap enable karne ke liye
+//       ),
+//     );
+//   }
+
+//   void _onArCoreViewCreated(ArCoreController controller) {
+//     arCoreController = controller;
+    
+//     // Jab user floor par tap kare toh Tom wahan move ho jaye
+//     arCoreController?.onPlaneTap = _handleOnPlaneTap;
+    
+//     // Initial Tom add karein
+//     _spawnTom(centerPosition);
+//     _startUniqueAnimation();
+//   }
+
+//   void _handleOnPlaneTap(List<ArCoreHitTestResult> hits) {
+//     final hit = hits.first;
+//     // Tap wali jagah ko naya center bana dein
+//     centerPosition = hit.pose.translation;
+//     _spawnTom(centerPosition);
+//   }
+
+//   void _spawnTom(vector.Vector3 position) {
+//     // Agar pehle se node hai toh remove karein
+//     if (tomNode != null) {
+//       arCoreController?.removeNode(nodeName: "tom_patrol");
+//     }
+
+//     tomNode = ArCoreReferenceNode(
+//       name: "tom_patrol",
+//       object3DFileName: "tom.glb", // Make sure file is in android/assets
+//       position: position,
+//       scale: vector.Vector3(0.5, 0.5, 0.5),
+//     );
+
+//     arCoreController?.addArCoreNode(tomNode!);
+//   }
+
+//   // Unique Circular Animation Logic
+//   void _startUniqueAnimation() {
+//     timer?.cancel();
+//     timer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
+//       if (tomNode == null || arCoreController == null) return;
+
+//       angle += 0.05; // Speed of rotation
+//       double radius = 0.6; // Kitni door tak ghoomega
+
+//       // Calculate new X and Z for circular movement
+//       double newX = centerPosition.x + radius * math.cos(angle);
+//       double newZ = centerPosition.z + radius * math.sin(angle);
+      
+//       vector.Vector3 newPos = vector.Vector3(newX, centerPosition.y, newZ);
+
+//       // Unique Feature: Moving with Rotation 
+//       // Tom ka face movement ki taraf karne ke liye y-axis rotation
+//       double rotationY = -angle + (math.pi / 2);
+
+//       // Update Node (Re-adding for smooth position in this specific plugin)
+//       _updateNodePosition(newPos, rotationY);
+//     });
+//   }
+
+//   void _updateNodePosition(vector.Vector3 pos, double rotationY) {
+//     arCoreController?.removeNode(nodeName: "tom_patrol");
+    
+//     tomNode = ArCoreReferenceNode(
+//       name: "tom_patrol",
+//       object3DFileName: "tom.glb",
+//       position: pos,
+//       // Quaternion use hota hai rotation ke liye
+//       rotation: vector.Vector4(0, 1, 0, rotationY), 
+//       scale: vector.Vector3(0.5, 0.5, 0.5),
+//     );
+
+//     arCoreController?.addArCoreNode(tomNode!);
+//   }
+
+//   @override
+//   void dispose() {
+//     timer?.cancel();
+//     arCoreController?.dispose();
+//     super.dispose();
+//   }
+// }
 
 
 

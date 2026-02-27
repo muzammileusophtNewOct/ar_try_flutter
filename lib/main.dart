@@ -46,6 +46,7 @@ class _AREmojiWorldState extends State<AREmojiWorld> {
             onArCoreViewCreated: _onArCoreViewCreated,
             enableTapRecognizer: true,
             enablePlaneRenderer: true, 
+            planeColor: Colors.red,
           ),
           
           // Selection UI
@@ -123,6 +124,7 @@ class _AREmojiWorldState extends State<AREmojiWorld> {
       final sphere = ArCoreCylinder(  //try different shapes
         materials: [material],
         // radius: 0.1, // 10cm radius
+        // height: 0.1,
       );
       final node = ArCoreNode(
         name: nodeName,
